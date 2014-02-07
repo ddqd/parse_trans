@@ -20,7 +20,7 @@
 -module(parse_trans_mod).
 %% Interface exports
 -export([transform_module/3]).
-
+-export([transform_module_to_binary/3]).
 -export([abstract_code/1]).
 -export([beam_file/1]).
 -export([compile_and_load_forms/1]).
@@ -36,18 +36,37 @@
 %% Interface exports
 %%============================================================================
 
+transform_module_to_binary(Mod, PT, Options) ->
+    Forms = abstract_code(beam_file(Mod)),
+    _Context = parse_trans:initial_context(Forms, Options),
+    PTMods = if is_atom(PT) -> [PT];
+        is_function(PT, 2) -> [PT];
+        is_list(PT) -> PT
+         end,
+    Transformed = lists:foldl(fun(PTx, Fs) when is_function(PTx, 2) ->
+                      PTx(Fs, Options);
+                 (PTMod, Fs) ->
+                      PTMod:parse_transform(Fs, Options)
+                  end, Forms, PTMods),
+    case compile:forms(Transformed, []) of
+        {ok, M, B} ->
+            {M, B};
+        {ok, M, B, _Warnings} ->
+            {M, B}
+    end.
+
 transform_module(Mod, PT, Options) ->
     Forms = abstract_code(beam_file(Mod)),
     Context = parse_trans:initial_context(Forms, Options),
     PTMods = if is_atom(PT) -> [PT];
-		is_function(PT, 2) -> [PT];
-		is_list(PT) -> PT
-	     end,
+        is_function(PT, 2) -> [PT];
+        is_list(PT) -> PT
+         end,
     Transformed = lists:foldl(fun(PTx, Fs) when is_function(PTx, 2) ->
-				      PTx(Fs, Options);
-				 (PTMod, Fs) ->
-				      PTMod:parse_transform(Fs, Options)
-			      end, Forms, PTMods),
+                      PTx(Fs, Options);
+                 (PTMod, Fs) ->
+                      PTMod:parse_transform(Fs, Options)
+                  end, Forms, PTMods),
     parse_trans:optionally_pretty_print(Transformed, Options, Context),
     compile_and_load_forms(Transformed, Options).
 
